@@ -20,7 +20,14 @@ Microsoft Azure Predictive Maintenance Dataset
 - PdM_telemetry.csv (~76 МБ) — почасовая телеметрия  
 - PdM_failures.csv (~24 КБ) — события отказов
 
+## 📌 Структура проекта
 
+- 📄 [README.md](./README.md)
+- 📄 [Report.md](./Report.md)
+- 📓 [lab_01_variant29.ipynb](./lab_01_variant29.ipynb)
+- [/images](./images/)
+
+    
 ## Как запустить проект
 
 ### Требования
@@ -54,3 +61,4 @@ Microsoft Azure Predictive Maintenance Dataset
 	stop-dfs.sh
 
 	```
+
