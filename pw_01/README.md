@@ -20,12 +20,6 @@ Microsoft Azure Predictive Maintenance Dataset
 - PdM_telemetry.csv (~76 МБ) — почасовая телеметрия  
 - PdM_failures.csv (~24 КБ) — события отказов
 
-## Структура репозитория
-lab_01_variant29/
-├── lab_01_variant29.ipynb      # основной ноутбук с кодом
-├── Report.md                   # отчёт по лабораторной (или Report.pdf)
-├── README.md                   # этот файл
-└── images/       				# скриншоты, если вставляешь их в README или Report
 
 ## Как запустить проект
 
@@ -58,4 +52,5 @@ lab_01_variant29/
 	```bash
 	stop-yarn.sh
 	stop-dfs.sh
+
 	```
