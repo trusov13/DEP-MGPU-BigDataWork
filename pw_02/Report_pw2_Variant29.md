@@ -91,7 +91,7 @@ sudo docker compose up -d
 - Mongo Express  
 - Cassandra Web  
 - GraphDB Workbench  
-
+(!containers)[https://github.com/trusov13/DEP-MGPU-BigDataWork/blob/main/pw_02/containers.png]
 ---
 
 ## 3. Выполнение задания 1 — MongoDB
