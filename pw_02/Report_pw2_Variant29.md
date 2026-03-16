@@ -1,5 +1,5 @@
 # Отчет по Практической работе №2  
-## Изучение и применение различных типов NoSQL баз данных (Polyglot Persistence)
+## Изучение и применение различных типов NoSQL баз данных на бизнес-кейсах (Polyglot Persistence)
 
 **Студент:** [ФИО]  
 **Группа:** [Номер группы]  
@@ -7,156 +7,255 @@
 
 ---
 
-## 1. Введение
+## 1. Введение. Описание бизнес-кейса и архитектуры
 
-Работа посвящена проектированию полиглотной системы хранения данных для стриминговой платформы.  
-Используются MongoDB, Cassandra и GraphDB для различных типов данных.
+### 1.1 Бизнес-кейс
+
+Цель работы — разработка аналитического ядра для стриминговой платформы (аналог Netflix/Кинопоиск) с использованием подхода **Polyglot Persistence** — применения нескольких специализированных СУБД для разных типов данных.
+
+В рамках платформы необходимо хранить:
+
+- каталог фильмов и пользователей  
+- потоковые логи действий пользователей  
+- граф связей между фильмами, актёрами и жанрами  
+- данные для рекомендательной системы  
+
+Использование одной реляционной БД для всех задач неэффективно, поэтому применяются разные NoSQL решения.
+
+### 1.2 Выбранный стек технологий
+
+**MongoDB (Document Store)**  
+Используется для хранения профилей пользователей и метаданных контента. Подходит благодаря:
+
+- гибкой схеме (JSON/BSON)
+- поддержке геопространственных данных
+- высокой скорости разработки
+
+**Cassandra (Wide-Column Store)**  
+Предназначена для хранения логов просмотров:
+
+- высокая скорость записи
+- горизонтальная масштабируемость
+- устойчивость к отказам
+
+**GraphDB (RDF Graph Database)**  
+Используется для анализа связей:
+
+- актёр — фильм — жанр
+- построение рекомендаций
+- сложные аналитические запросы (SPARQL)
+
+---
+
+### 1.3 Архитектура решения
+
+```mermaid
+graph TD
+    Client[Web / Mobile App] --> API[API Gateway]
+
+    subgraph Polyglot Data Layer
+        API --> Mongo[(MongoDB — Каталог и пользователи)]
+        API --> Cass[(Cassandra — Логи просмотров)]
+        API --> Graph[(GraphDB — Граф знаний)]
+    end
+
+    subgraph Analytics
+        Mongo --> BI[Бизнес-аналитика]
+        Cass --> BI
+        Graph --> BI
+    end
+```
 
 ---
 
 ## 2. Развертывание инфраструктуры
 
-Контейнеры развернуты в Docker‑среде согласно методическим указаниям.
+Контейнеры запущены на виртуальной машине devops_dba_25.ova.
 
----
+```bash
+# MongoDB
+cd ~/Downloads/dba/nonrel/mongo
+sudo docker compose up -d
 
-## 3. Выполнение задания 1 — MongoDB (геопространственный поиск)
+# Cassandra
+cd ~/Downloads/dba/nonrel/cassandra
+sudo docker compose up -d
 
-Ниже приведён код, использованный в работе.
-
-```python
-!pip install Faker pymongo SPARQLWrapper pandas matplotlib seaborn -q
-
-from pymongo import MongoClient
-from faker import Faker
-import random
-from SPARQLWrapper import SPARQLWrapper, JSON
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-print("Библиотеки готовы")
-
-# ==========================================
-# 1. MongoDB (как у преподавателя)
-# ==========================================
-mongo_client = MongoClient("mongodb://root:abc123!@localhost:27017/")
-db = mongo_client["streaming_db"]
-users = db["users"]
-users.drop()
-print("MongoDB подключена (root:abc123!)")
+# GraphDB
+cd ~/Downloads/dba/nonrel/graphdb
+sudo docker compose up -d
 ```
 
+Проверена доступность веб‑интерфейсов:
+
+- Mongo Express  
+- Cassandra Web  
+- GraphDB Workbench  
+
 ---
 
-## 4. Выполнение задания 2 — GraphDB / SPARQL
+## 3. Выполнение задания 1 — MongoDB
 
-Использованный код и запросы:
+### Геопространственный поиск пользователей ($near)
 
-```python
-!pip install Faker pymongo SPARQLWrapper pandas matplotlib seaborn -q
+Задача: найти пользователей, находящихся рядом с заданной точкой.
 
-from pymongo import MongoClient
-from faker import Faker
-import random
-from SPARQLWrapper import SPARQLWrapper, JSON
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+### 3.1 Подготовка данных
 
-print("Библиотеки готовы")
+```js
+use streaming_db
 
-# ==========================================
-# 5. Подключение к GraphDB 
-# ==========================================
-sparql = SPARQLWrapper("http://localhost:17200/repositories/movies_repo")
-sparql.setReturnFormat(JSON)
-
-print("Подключаемся к GraphDB по порту 17200...")
-
-try:
-    sparql.setQuery("SELECT (COUNT(*) AS ?cnt) WHERE { ?s ?p ?o } LIMIT 1")
-    res = sparql.query().convert()
-    print(f"GraphDB подключен! Триплетов в репозитории: {res['results']['bindings'][0]['cnt']['value']}")
-except Exception as e:
-    print("Ошибка подключения:", e)
-
-# ==========================================
-# SPARQL-запросы
-# ==========================================
-q1 = '''PREFIX dbo: <http://dbpedia.org/ontology/>
-SELECT ?title ?rating ?comments WHERE {
-  ?m dbo:title ?title ; dbo:rating ?rating ; dbo:commentCount ?comments .
-  FILTER(?rating < 5.0 && ?comments > 500)
-} ORDER BY DESC(?comments)'''
-
-sparql.setQuery(q1)
-df = pd.DataFrame([{
-    "film": r["title"]["value"],
-    "rating": float(r["rating"]["value"]),
-    "comments": int(r["comments"]["value"])
-} for r in sparql.query().convert()["results"]["bindings"]])
-
-print("Фильмы с низким рейтингом, но высокой обсуждаемостью:")
-print(df)
-
-# SPARQL 2 — Драмы до 1990 года с рейтингом > 7.0
-q2 = '''
-PREFIX dbo: <http://dbpedia.org/ontology/>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-
-SELECT ?title ?rating ?date
-WHERE {
-  ?m dbo:title ?title ;
-     dbo:rating ?rating ;
-     dbo:releaseDate ?date .
-  ?m dbo:genre ?g .
-  ?g rdfs:label "Drama"@en .
-  FILTER(?rating > 7.0 && ?date < "1990-01-01"^^xsd:date)
-}
-LIMIT 10
-'''
-
-sparql.setQuery(q2)
-sparql.setReturnFormat(JSON)
-results2 = sparql.query().convert()
-
-df_drama = pd.DataFrame([
-    {
-        "film": r["title"]["value"],
-        "rating": float(r["rating"]["value"]),
-        "date": r["date"]["value"]
+db.users.insertMany([
+  {
+    name: "Ivan",
+    location: {
+      type: "Point",
+      coordinates: [37.6176, 55.7558]
     }
-    for r in results2["results"]["bindings"]
+  },
+  {
+    name: "Anna",
+    location: {
+      type: "Point",
+      coordinates: [30.3351, 59.9343]
+    }
+  },
+  {
+    name: "Petr",
+    location: {
+      type: "Point",
+      coordinates: [37.6, 55.75]
+    }
+  }
 ])
-
-print("Драмы до 1990 года с рейтингом > 7.0:")
-print(df_drama)
 ```
+
+Создание геопространственного индекса:
+
+```js
+db.users.createIndex({ location: "2dsphere" })
+```
+
+### 3.2 Выполнение запроса
+
+Поиск пользователей в радиусе 50 км:
+
+```js
+db.users.find({
+  location: {
+    $near: {
+      $geometry: {
+        type: "Point",
+        coordinates: [37.6176, 55.7558]
+      },
+      $maxDistance: 50000
+    }
+  }
+})
+```
+
+### 3.3 Обоснование
+
+MongoDB эффективно работает с геоданными благодаря встроенной поддержке GeoJSON и индексам 2dsphere.
+
+Практическое применение:
+
+- рекомендации локального контента  
+- анализ региональной аудитории  
+- геотаргетинг рекламы  
+- подбор событий рядом с пользователем  
+
+---
+
+## 4. Выполнение задания 2 — GraphDB (SPARQL)
+
+### Условие
+
+Найти:
+
+1. Фильмы с рейтингом < 5.0, но более 500 комментариев  
+2. Драмы до 1990 года с рейтингом > 7.0  
+
+### 4.1 Запрос 1 — низкий рейтинг, высокая обсуждаемость
+
+```sparql
+PREFIX ex: <http://example.org/movie#>
+
+SELECT ?movie ?title ?rating ?comments
+WHERE {
+  ?movie ex:title ?title ;
+         ex:rating ?rating ;
+         ex:comments ?comments .
+
+  FILTER (?rating < 5.0 && ?comments > 500)
+}
+```
+
+### 4.2 Запрос 2 — старые драмы с высоким рейтингом
+
+```sparql
+PREFIX ex: <http://example.org/movie#>
+
+SELECT ?movie ?title ?rating ?year
+WHERE {
+  ?movie ex:title ?title ;
+         ex:rating ?rating ;
+         ex:year ?year ;
+         ex:genre "Drama" .
+
+  FILTER (?year < 1990 && ?rating > 7.0)
+}
+```
+
+### 4.3 Обоснование
+
+GraphDB позволяет выполнять сложные аналитические запросы по связанным данным без громоздких JOIN‑операций.
 
 ---
 
 ## 5. Выполнение задания 3 — Бизнес‑аналитика
 
-Аналитическая обработка данных:
+### Тема
 
-```python
-!pip install Faker pymongo SPARQLWrapper pandas matplotlib seaborn -q
+Феномен «так плохо, что даже хорошо»: фильмы с низким рейтингом, но высокой обсуждаемостью.
 
-from pymongo import MongoClient
-from faker import Faker
-import random
-from SPARQLWrapper import SPARQLWrapper, JSON
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+### 5.1 Анализ явления
 
-print("Библиотеки готовы")
-```
+Причины высокой популярности плохих фильмов:
+
+- вирусный эффект и мемы  
+- скандалы вокруг фильма  
+- культовый статус  
+- участие известных актёров  
+- необычный или абсурдный сюжет  
+- ностальгия  
+
+Такие фильмы вызывают активные обсуждения, несмотря на низкие оценки.
+
+### 5.2 Бизнес‑ценность
+
+Для стриминговой платформы подобный контент может быть выгоден:
+
+- увеличивает вовлечённость пользователей  
+- повышает время просмотра  
+- стимулирует обсуждение в соцсетях  
+- привлекает новую аудиторию  
+
+### 5.3 Рекомендации
+
+1. Создать подборки «Культовое плохое кино»  
+2. Использовать такие фильмы для привлечения внимания  
+3. Продвигать их через алгоритмы рекомендаций  
+4. Учитывать обсуждаемость как отдельную метрику успеха  
 
 ---
 
-## 6. Выводы
+## 6. Итоговые выводы
 
-Использование нескольких специализированных NoSQL БД позволяет эффективно решать разные классы задач:  
-MongoDB — гибкие данные и геоанализ, Cassandra — потоковые данные, GraphDB — анализ связей и рекомендации.
+В ходе работы подтверждена эффективность подхода Polyglot Persistence.
+
+**MongoDB** — удобна для хранения гибких данных и геопространственного анализа.  
+**Cassandra** — оптимальна для потоковых логов и больших объёмов записи.  
+**GraphDB** — незаменима для анализа связей и построения рекомендаций.
+
+Использование нескольких специализированных СУБД позволяет создать масштабируемую и производительную систему аналитики для стриминговой платформы.
