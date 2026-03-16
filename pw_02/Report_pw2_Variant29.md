@@ -125,7 +125,7 @@ users.create_index([("location", "2dsphere")])
 
 ### 3.2 Выполнение запроса
 
-Поиск пользователей в радиусе 50 км:
+Поиск пользователей в радиусе 100 км:
 
 ```python
 results = users.find({"location": {"$near": {"$geometry": {"type": "Point", "coordinates": [37.6173, 55.7558]}, "$maxDistance": 1000000}}})
