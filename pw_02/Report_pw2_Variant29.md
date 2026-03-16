@@ -31,13 +31,6 @@
 - поддержке геопространственных данных
 - высокой скорости разработки
 
-**Cassandra (Wide-Column Store)**  
-Предназначена для хранения логов просмотров:
-
-- высокая скорость записи
-- горизонтальная масштабируемость
-- устойчивость к отказам
-
 **GraphDB (RDF Graph Database)**  
 Используется для анализа связей:
 
@@ -55,13 +48,11 @@ graph TD
 
     subgraph Polyglot Data Layer
         API --> Mongo[(MongoDB — Каталог и пользователи)]
-        API --> Cass[(Cassandra — Логи просмотров)]
         API --> Graph[(GraphDB — Граф знаний)]
     end
 
     subgraph Analytics
         Mongo --> BI[Бизнес-аналитика]
-        Cass --> BI
         Graph --> BI
     end
 ```
