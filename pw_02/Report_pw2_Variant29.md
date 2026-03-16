@@ -127,18 +127,11 @@ users.create_index([("location", "2dsphere")])
 
 Поиск пользователей в радиусе 50 км:
 
-```js
-db.users.find({
-  location: {
-    $near: {
-      $geometry: {
-        type: "Point",
-        coordinates: [37.6176, 55.7558]
-      },
-      $maxDistance: 50000
-    }
-  }
-})
+```python
+results = users.find({"location": {"$near": {"$geometry": {"type": "Point", "coordinates": [37.6173, 55.7558]}, "$maxDistance": 1000000}}})
+print("Пользователи рядом с Москвой:")
+for u in list(results)[:10]:
+    print(f"• {u['name']} | {u['city']}")
 ```
 
 ### 3.3 Обоснование
@@ -166,31 +159,29 @@ MongoDB эффективно работает с геоданными благо
 ### 4.1 Запрос 1 — низкий рейтинг, высокая обсуждаемость
 
 ```sparql
-PREFIX ex: <http://example.org/movie#>
-
-SELECT ?movie ?title ?rating ?comments
-WHERE {
-  ?movie ex:title ?title ;
-         ex:rating ?rating ;
-         ex:comments ?comments .
-
-  FILTER (?rating < 5.0 && ?comments > 500)
-}
+PREFIX dbo: <http://dbpedia.org/ontology/>
+SELECT ?title ?rating ?comments WHERE {
+  ?m dbo:title ?title ; dbo:rating ?rating ; dbo:commentCount ?comments .
+  FILTER(?rating < 5.0 && ?comments > 500)
+} ORDER BY DESC(?comments)
 ```
 
 ### 4.2 Запрос 2 — старые драмы с высоким рейтингом
 
 ```sparql
-PREFIX ex: <http://example.org/movie#>
+PREFIX dbo: <http://dbpedia.org/ontology/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT ?movie ?title ?rating ?year
+SELECT ?title ?rating ?date
 WHERE {
-  ?movie ex:title ?title ;
-         ex:rating ?rating ;
-         ex:year ?year ;
-         ex:genre "Drama" .
-
-  FILTER (?year < 1990 && ?rating > 7.0)
+  ?m dbo:title ?title ;
+     dbo:rating ?rating ;
+     dbo:releaseDate ?date .
+  ?m dbo:genre ?g .
+  ?g rdfs:label "Drama"@en .
+  FILTER(?rating > 7.0 && ?date < "1990-01-01"^^xsd:date)
+}
+LIMIT 10
 }
 ```
 
