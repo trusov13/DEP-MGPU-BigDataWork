@@ -1,5 +1,4 @@
-# Отчет по Практической работе №2  
-## Изучение и применение различных типов NoSQL баз данных на бизнес-кейсах (Polyglot Persistence)
+# Отчет по Практической работе №2 (Вариант 29)
 
 **Студент:** [ФИО]  
 **Группа:** [Номер группы]  
@@ -7,255 +6,203 @@
 
 ---
 
-## 1. Введение. Описание бизнес-кейса и архитектуры
+## Содержимое выполненной работы (на основе Jupyter Notebook)
 
-### 1.1 Бизнес-кейс
-
-Цель работы — разработка аналитического ядра для стриминговой платформы (аналог Netflix/Кинопоиск) с использованием подхода **Polyglot Persistence** — применения нескольких специализированных СУБД для разных типов данных.
-
-В рамках платформы необходимо хранить:
-
-- каталог фильмов и пользователей  
-- потоковые логи действий пользователей  
-- граф связей между фильмами, актёрами и жанрами  
-- данные для рекомендательной системы  
-
-Использование одной реляционной БД для всех задач неэффективно, поэтому применяются разные NoSQL решения.
-
-### 1.2 Выбранный стек технологий
-
-**MongoDB (Document Store)**  
-Используется для хранения профилей пользователей и метаданных контента. Подходит благодаря:
-
-- гибкой схеме (JSON/BSON)
-- поддержке геопространственных данных
-- высокой скорости разработки
-
-**Cassandra (Wide-Column Store)**  
-Предназначена для хранения логов просмотров:
-
-- высокая скорость записи
-- горизонтальная масштабируемость
-- устойчивость к отказам
-
-**GraphDB (RDF Graph Database)**  
-Используется для анализа связей:
-
-- актёр — фильм — жанр
-- построение рекомендаций
-- сложные аналитические запросы (SPARQL)
+Ниже приведены материалы выполнения лабораторной работы, извлеченные из предоставленного ноутбука.
 
 ---
 
-### 1.3 Архитектура решения
+# Практическая работа 2 — NoSQL
+**Вариант 29** — полностью исправленная версия
 
-```mermaid
-graph TD
-    Client[Web / Mobile App] --> API[API Gateway]
-
-    subgraph Polyglot Data Layer
-        API --> Mongo[(MongoDB — Каталог и пользователи)]
-        API --> Cass[(Cassandra — Логи просмотров)]
-        API --> Graph[(GraphDB — Граф знаний)]
-    end
-
-    subgraph Analytics
-        Mongo --> BI[Бизнес-аналитика]
-        Cass --> BI
-        Graph --> BI
-    end
-```
+MongoDB + геопоиск • GraphDB 
 
 ---
 
-## 2. Развертывание инфраструктуры
-
-Контейнеры запущены на виртуальной машине devops_dba_25.ova.
-
-```bash
-# MongoDB
-cd ~/Downloads/dba/nonrel/mongo
-sudo docker compose up -d
-
-# Cassandra
-cd ~/Downloads/dba/nonrel/cassandra
-sudo docker compose up -d
-
-# GraphDB
-cd ~/Downloads/dba/nonrel/graphdb
-sudo docker compose up -d
-```
-
-Проверена доступность веб‑интерфейсов:
-
-- Mongo Express  
-- Cassandra Web  
-- GraphDB Workbench  
+!pip install Faker pymongo SPARQLWrapper pandas matplotlib seaborn -q
 
 ---
 
-## 3. Выполнение задания 1 — MongoDB
+from pymongo import MongoClient
+from faker import Faker
+import random
+from SPARQLWrapper import SPARQLWrapper, JSON
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-### Геопространственный поиск пользователей ($near)
+print("Библиотеки готовы")
 
-Задача: найти пользователей, находящихся рядом с заданной точкой.
+---
 
-### 3.1 Подготовка данных
+# ==========================================
+# 1. MongoDB (как у преподавателя)
+# ==========================================
+mongo_client = MongoClient("mongodb://root:abc123!@localhost:27017/")
+db = mongo_client["streaming_db"]
+users = db["users"]
+users.drop()
+print("MongoDB подключена (root:abc123!)")
 
-```js
-use streaming_db
+---
 
-db.users.insertMany([
-  {
-    name: "Ivan",
-    location: {
-      type: "Point",
-      coordinates: [37.6176, 55.7558]
+# ==========================================
+# 2. Генерация пользователей
+# ==========================================
+fake = Faker()
+cities = [("Москва",37.6173,55.7558),("Берлин",13.4050,52.5200),("Париж",2.3522,48.8566),
+          ("Рим",12.4964,41.9028),("Мадрид",-3.7038,40.4168),("Лондон",-0.1276,51.5074)]
+
+data = []
+for _ in range(20):
+    city = random.choice(cities)
+    user = {"name": fake.name(), "email": fake.email(), "city": city[0],
+            "location": {"type": "Point", "coordinates": [city[1], city[2]]}}
+    data.append(user)
+
+users.insert_many(data)
+users.create_index([("location", "2dsphere")])
+print(f"Создано {len(data)} пользователей + геоиндекс")
+
+---
+
+# ==========================================
+# 3. Геопоиск
+# ==========================================
+results = users.find({"location": {"$near": {"$geometry": {"type": "Point", "coordinates": [37.6173, 55.7558]}, "$maxDistance": 1000000}}})
+print("Пользователи рядом с Москвой:")
+for u in list(results)[:10]:
+    print(f"• {u['name']} | {u['city']}")
+
+---
+
+## Задание 2. GraphDB (порт 17200)
+
+---
+
+# ==========================================
+# 4. ГЕНЕРАЦИЯ RDF
+# ==========================================
+rdf_lines = [
+    "@prefix ex: <http://example.org/streaming#> .",
+    "@prefix dbo: <http://dbpedia.org/ontology/> .",
+    "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+    "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
+    "",
+    "ex:Drama rdfs:label \"Drama\"@en .",
+    ""
+]
+
+films = [
+    ("Movie1", "The Godfather", 9.2, 8900, "1972-01-01"),
+    ("Movie2", "The Shawshank Redemption", 9.3, 12000, "1994-01-01"),
+    ("Movie3", "Casablanca", 8.5, 6800, "1942-01-01"),
+    ("Movie4", "12 Angry Men", 9.0, 5500, "1957-01-01"),
+    ("Movie5", "Schindler's List", 9.0, 7200, "1993-01-01"),
+    ("Movie6", "One Flew Over the Cuckoo's Nest", 8.7, 4900, "1975-01-01"),
+    ("Movie7", "Citizen Kane", 8.3, 4500, "1941-01-01"),
+    ("Movie8", "Psycho", 8.5, 6200, "1960-01-01"),
+    ("Movie9", "The Godfather Part II", 9.0, 5300, "1974-01-01"),
+    ("Movie10", "Rear Window", 8.5, 4100, "1954-01-01"),
+    ("Movie11", "The Room", 3.2, 12500, "2003-01-01"),
+    ("Movie12", "Birdemic", 1.9, 6400, "2010-01-01"),
+    ("Movie13", "Troll 2", 2.8, 8700, "1990-01-01")
+]
+
+for mid, title, rating, comments, date in films:
+    rdf_lines.append(f'ex:{mid} dbo:title "{title}" ;')
+    rdf_lines.append(f'    dbo:rating "{rating}"^^xsd:float ;')
+    rdf_lines.append(f'    dbo:commentCount "{comments}"^^xsd:integer ;')
+    rdf_lines.append(f'    dbo:genre ex:Drama ;')
+    rdf_lines.append(f'    dbo:releaseDate "{date}"^^xsd:date .')
+    rdf_lines.append("")
+
+# Записываем файл чисто
+with open("variant29_movies.ttl", "w", encoding="utf-8") as f:
+    f.write("\n".join(rdf_lines))
+
+print("✅ Файл variant29_movies.ttl создан успешно")
+
+---
+
+# ==========================================
+# 5. Подключение к GraphDB 
+# ==========================================
+sparql = SPARQLWrapper("http://localhost:17200/repositories/movies_repo")
+sparql.setReturnFormat(JSON)
+
+print("Подключаемся к GraphDB по порту 17200...")
+
+try:
+    sparql.setQuery("SELECT (COUNT(*) AS ?cnt) WHERE { ?s ?p ?o } LIMIT 1")
+    res = sparql.query().convert()
+    print(f"GraphDB подключен! Триплетов в репозитории: {res['results']['bindings'][0]['cnt']['value']}")
+except Exception as e:
+    print("Ошибка подключения:", e)
+
+---
+
+# ==========================================
+# SPARQL-запросы
+# ==========================================
+q1 = '''PREFIX dbo: <http://dbpedia.org/ontology/>
+SELECT ?title ?rating ?comments WHERE {
+  ?m dbo:title ?title ; dbo:rating ?rating ; dbo:commentCount ?comments .
+  FILTER(?rating < 5.0 && ?comments > 500)
+} ORDER BY DESC(?comments)'''
+
+sparql.setQuery(q1)
+df = pd.DataFrame([{
+    "film": r["title"]["value"],
+    "rating": float(r["rating"]["value"]),
+    "comments": int(r["comments"]["value"])
+} for r in sparql.query().convert()["results"]["bindings"]])
+
+print("Фильмы с низким рейтингом, но высокой обсуждаемостью:")
+print(df)
+
+---
+
+# График + вывод
+sns.set_theme(style="whitegrid")
+plt.figure(figsize=(12,6))
+sns.scatterplot(data=df, x="rating", y="comments", s=100, color="red")
+plt.title("Феномен «так плохо, что даже хорошо»")
+plt.show()
+
+print("\nБИЗНЕС-ВЫВОД: Такие фильмы идеально подходят для раздела 'Культ трэша' — они генерируют огромный UGC и удержание пользователей.")
+
+---
+
+# SPARQL 2 — Драмы до 1990 года с рейтингом > 7.0
+q2 = '''
+PREFIX dbo: <http://dbpedia.org/ontology/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT ?title ?rating ?date
+WHERE {
+  ?m dbo:title ?title ;
+     dbo:rating ?rating ;
+     dbo:releaseDate ?date .
+  ?m dbo:genre ?g .
+  ?g rdfs:label "Drama"@en .
+  FILTER(?rating > 7.0 && ?date < "1990-01-01"^^xsd:date)
+}
+LIMIT 10
+'''
+
+sparql.setQuery(q2)
+sparql.setReturnFormat(JSON)
+results2 = sparql.query().convert()
+
+df_drama = pd.DataFrame([
+    {
+        "film": r["title"]["value"],
+        "rating": float(r["rating"]["value"]),
+        "date": r["date"]["value"]
     }
-  },
-  {
-    name: "Anna",
-    location: {
-      type: "Point",
-      coordinates: [30.3351, 59.9343]
-    }
-  },
-  {
-    name: "Petr",
-    location: {
-      type: "Point",
-      coordinates: [37.6, 55.75]
-    }
-  }
+    for r in results2["results"]["bindings"]
 ])
-```
 
-Создание геопространственного индекса:
-
-```js
-db.users.createIndex({ location: "2dsphere" })
-```
-
-### 3.2 Выполнение запроса
-
-Поиск пользователей в радиусе 50 км:
-
-```js
-db.users.find({
-  location: {
-    $near: {
-      $geometry: {
-        type: "Point",
-        coordinates: [37.6176, 55.7558]
-      },
-      $maxDistance: 50000
-    }
-  }
-})
-```
-
-### 3.3 Обоснование
-
-MongoDB эффективно работает с геоданными благодаря встроенной поддержке GeoJSON и индексам 2dsphere.
-
-Практическое применение:
-
-- рекомендации локального контента  
-- анализ региональной аудитории  
-- геотаргетинг рекламы  
-- подбор событий рядом с пользователем  
-
----
-
-## 4. Выполнение задания 2 — GraphDB (SPARQL)
-
-### Условие
-
-Найти:
-
-1. Фильмы с рейтингом < 5.0, но более 500 комментариев  
-2. Драмы до 1990 года с рейтингом > 7.0  
-
-### 4.1 Запрос 1 — низкий рейтинг, высокая обсуждаемость
-
-```sparql
-PREFIX ex: <http://example.org/movie#>
-
-SELECT ?movie ?title ?rating ?comments
-WHERE {
-  ?movie ex:title ?title ;
-         ex:rating ?rating ;
-         ex:comments ?comments .
-
-  FILTER (?rating < 5.0 && ?comments > 500)
-}
-```
-
-### 4.2 Запрос 2 — старые драмы с высоким рейтингом
-
-```sparql
-PREFIX ex: <http://example.org/movie#>
-
-SELECT ?movie ?title ?rating ?year
-WHERE {
-  ?movie ex:title ?title ;
-         ex:rating ?rating ;
-         ex:year ?year ;
-         ex:genre "Drama" .
-
-  FILTER (?year < 1990 && ?rating > 7.0)
-}
-```
-
-### 4.3 Обоснование
-
-GraphDB позволяет выполнять сложные аналитические запросы по связанным данным без громоздких JOIN‑операций.
-
----
-
-## 5. Выполнение задания 3 — Бизнес‑аналитика
-
-### Тема
-
-Феномен «так плохо, что даже хорошо»: фильмы с низким рейтингом, но высокой обсуждаемостью.
-
-### 5.1 Анализ явления
-
-Причины высокой популярности плохих фильмов:
-
-- вирусный эффект и мемы  
-- скандалы вокруг фильма  
-- культовый статус  
-- участие известных актёров  
-- необычный или абсурдный сюжет  
-- ностальгия  
-
-Такие фильмы вызывают активные обсуждения, несмотря на низкие оценки.
-
-### 5.2 Бизнес‑ценность
-
-Для стриминговой платформы подобный контент может быть выгоден:
-
-- увеличивает вовлечённость пользователей  
-- повышает время просмотра  
-- стимулирует обсуждение в соцсетях  
-- привлекает новую аудиторию  
-
-### 5.3 Рекомендации
-
-1. Создать подборки «Культовое плохое кино»  
-2. Использовать такие фильмы для привлечения внимания  
-3. Продвигать их через алгоритмы рекомендаций  
-4. Учитывать обсуждаемость как отдельную метрику успеха  
-
----
-
-## 6. Итоговые выводы
-
-В ходе работы подтверждена эффективность подхода Polyglot Persistence.
-
-**MongoDB** — удобна для хранения гибких данных и геопространственного анализа.  
-**Cassandra** — оптимальна для потоковых логов и больших объёмов записи.  
-**GraphDB** — незаменима для анализа связей и построения рекомендаций.
-
-Использование нескольких специализированных СУБД позволяет создать масштабируемую и производительную систему аналитики для стриминговой платформы.
+print("Драмы до 1990 года с рейтингом > 7.0:")
+print(df_drama)
