@@ -102,32 +102,20 @@ sudo docker compose up -d
 
 ### 3.1 Подготовка данных
 
-```js
-use streaming_db
+```python
+fake = Faker()
+cities = [("Москва",37.6173,55.7558),("Берлин",13.4050,52.5200),("Париж",2.3522,48.8566),
+          ("Рим",12.4964,41.9028),("Мадрид",-3.7038,40.4168),("Лондон",-0.1276,51.5074)]
 
-db.users.insertMany([
-  {
-    name: "Ivan",
-    location: {
-      type: "Point",
-      coordinates: [37.6176, 55.7558]
-    }
-  },
-  {
-    name: "Anna",
-    location: {
-      type: "Point",
-      coordinates: [30.3351, 59.9343]
-    }
-  },
-  {
-    name: "Petr",
-    location: {
-      type: "Point",
-      coordinates: [37.6, 55.75]
-    }
-  }
-])
+data = []
+for _ in range(20):
+    city = random.choice(cities)
+    user = {"name": fake.name(), "email": fake.email(), "city": city[0],
+            "location": {"type": "Point", "coordinates": [city[1], city[2]]}}
+    data.append(user)
+
+users.insert_many(data)
+users.create_index([("location", "2dsphere")])
 ```
 
 Создание геопространственного индекса:
