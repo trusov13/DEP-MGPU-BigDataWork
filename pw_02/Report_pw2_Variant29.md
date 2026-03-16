@@ -115,13 +115,12 @@ for _ in range(20):
     data.append(user)
 
 users.insert_many(data)
-users.create_index([("location", "2dsphere")])
 ```
 
 Создание геопространственного индекса:
 
-```js
-db.users.createIndex({ location: "2dsphere" })
+```python
+users.create_index([("location", "2dsphere")])
 ```
 
 ### 3.2 Выполнение запроса
